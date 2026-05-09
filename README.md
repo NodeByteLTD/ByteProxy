@@ -1,4 +1,4 @@
-# ByteProxy Documentation
+# ByteProxy Docs
 
 This directory contains additional documentation for the ByteProxy project.
 
