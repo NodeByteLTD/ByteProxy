@@ -5,7 +5,7 @@ title: ByteProxy
 description: Extensible web proxy for Discord, GitHub, and other APIs
 baseurl: ""
 url: ""
-repository: ByteBrushStudios/ByteProxy
+repository: NodeByteLTD/ByteProxy
 
 # Theme settings
 remote_theme: pmarsceill/just-the-docs
@@ -14,9 +14,9 @@ color_scheme: dark
 # Just the Docs settings
 aux_links:
   "ByteProxy on GitHub":
-    - "https://github.com/ByteBrushStudios/ByteProxy"
+    - "https://github.com/NodeByteLTD/ByteProxy"
   "Discord Community":
-    - "https://discord.gg/Vv2bdC44Ge"
+    - "https://discord.gg/nodebyte"
 
 # Enable search
 search_enabled: true
@@ -24,7 +24,7 @@ search_enabled: true
 # Navigation structure
 nav_external_links:
   - title: ByteProxy on GitHub
-    url: https://github.com/ByteBrushStudios/ByteProxy
+    url: https://github.com/NodeByteLTD/ByteProxy
     hide_icon: false
 
 # Enable callouts
@@ -40,7 +40,7 @@ callouts:
     color: red
 
 # Footer content
-footer_content: "Copyright &copy; 2025 ByteBrush Studios. Distributed under AGPL-3.0 license."
+footer_content: "Copyright &copy; 2026 NodeByte LTD. Distributed under AGPL-3.0 license."
 
 # Collections for organizing content
 collections:
