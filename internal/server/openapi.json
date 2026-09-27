@@ -1,0 +1,223 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "ByteProxy",
+    "version": "__VERSION__",
+    "description": "Extensible proxy for Discord, GitHub and other APIs with per-credential rate limiting.\n\n**Proxy authentication.** When `REQUIRE_AUTH_FOR_PROXY=true`, `/proxy/*` requires `PROXY_API_KEY` via `X-Api-Key`, `Authorization: Bearer`, or `?api_key=`. When `REQUIRE_AUTH_FOR_MANAGEMENT=true`, `/manage/*` requires `MANAGEMENT_API_KEY` the same way.\n\n**Upstream credentials.** ByteProxy holds no shared bot token. Callers authenticate to the upstream API themselves: send `X-Upstream-Authorization: Bot <token>` (or `Bearer <token>`), or send your normal `Authorization` header when the proxy key travels in `X-Api-Key`. Rate limits are tracked per upstream credential. Dynamic services may instead use a server-side `BYTEPROXY_TOKEN_*` environment variable.",
+    "license": { "name": "AGPL-3.0-only", "url": "https://www.gnu.org/licenses/agpl-3.0.html" }
+  },
+  "externalDocs": { "description": "Source", "url": "https://github.com/NodeByteLTD/ByteProxy" },
+  "tags": [
+    { "name": "Base" },
+    { "name": "Health" },
+    { "name": "Proxy" },
+    { "name": "Management" },
+    { "name": "Debug" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "apiKeyHeader": { "type": "apiKey", "in": "header", "name": "X-Api-Key" },
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "API key" },
+      "apiKeyQuery": { "type": "apiKey", "in": "query", "name": "api_key" }
+    },
+    "parameters": {
+      "service": { "name": "service", "in": "path", "required": true, "schema": { "type": "string" }, "example": "discord" },
+      "key": { "name": "key", "in": "path", "required": true, "schema": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$" } },
+      "upstreamAuthorization": {
+        "name": "X-Upstream-Authorization",
+        "in": "header",
+        "required": false,
+        "description": "Credential forwarded to the upstream as Authorization (or the service's api-key header). Takes precedence over the caller's own Authorization header.",
+        "schema": { "type": "string" },
+        "example": "Bot MTA..."
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": { "error": { "type": "string" }, "service": { "type": "string" }, "path": { "type": "string" } },
+        "required": ["error"]
+      },
+      "RateLimit": {
+        "type": "object",
+        "properties": { "maxRequests": { "type": "integer", "minimum": 1 }, "windowMs": { "type": "integer", "minimum": 1 } },
+        "required": ["maxRequests", "windowMs"]
+      },
+      "Auth": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "enum": ["bearer", "basic", "api-key", "bot"] },
+          "tokenEnvVar": { "type": "string", "pattern": "^BYTEPROXY_TOKEN_[A-Z0-9_]+$", "description": "Optional server-side credential. Only BYTEPROXY_TOKEN_* variables are allowed." },
+          "headerName": { "type": "string", "description": "Required for api-key auth." }
+        },
+        "required": ["type"]
+      },
+      "ServiceConfig": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "maxLength": 100 },
+          "baseUrl": { "type": "string", "format": "uri", "description": "Absolute http(s) URL." },
+          "headers": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Static headers. Authorization, Cookie, Host and X-Api-Key can't be set here." },
+          "rateLimit": { "$ref": "#/components/schemas/RateLimit" },
+          "auth": { "$ref": "#/components/schemas/Auth" }
+        },
+        "required": ["name", "baseUrl"]
+      },
+      "ServiceSummary": {
+        "type": "object",
+        "properties": {
+          "key": { "type": "string" },
+          "name": { "type": "string" },
+          "baseUrl": { "type": "string" },
+          "builtin": { "type": "boolean" },
+          "hasAuth": { "type": "boolean" },
+          "authTokenConfigured": { "type": "boolean" },
+          "rateLimit": { "oneOf": [{ "$ref": "#/components/schemas/RateLimit" }, { "type": "null" }] }
+        }
+      },
+      "ServiceList": {
+        "type": "object",
+        "properties": { "services": { "type": "array", "items": { "$ref": "#/components/schemas/ServiceSummary" } }, "count": { "type": "integer" } }
+      },
+      "UpdateInfo": {
+        "type": "object",
+        "properties": {
+          "currentVersion": { "type": "string" },
+          "latestVersion": { "type": ["string", "null"] },
+          "latestReleaseUrl": { "type": ["string", "null"] },
+          "isLatest": { "type": "boolean" },
+          "isPrerelease": { "type": "boolean" },
+          "releaseDate": { "type": ["string", "null"] },
+          "updateAvailable": { "type": "boolean" },
+          "checkTime": { "type": "string", "format": "date-time" }
+        }
+      },
+      "KeyDebug": {
+        "type": "object",
+        "properties": {
+          "message": { "type": "string" },
+          "keyInfo": {
+            "type": "object",
+            "properties": {
+              "proxyAuthRequired": { "type": "boolean" },
+              "managementAuthRequired": { "type": "boolean" },
+              "proxyKeyConfigured": { "type": "boolean" },
+              "managementKeyConfigured": { "type": "boolean" }
+            }
+          }
+        }
+      }
+    },
+    "responses": {
+      "Unauthorized": { "description": "Missing or invalid API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "NotFound": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "Json": { "description": "OK", "content": { "application/json": { "schema": { "type": "object" } } } }
+    }
+  },
+  "paths": {
+    "/": { "get": { "tags": ["Base"], "summary": "API root", "operationId": "root", "responses": { "200": { "$ref": "#/components/responses/Json" } } } },
+    "/health": { "get": { "tags": ["Health"], "summary": "Health check", "operationId": "health", "responses": { "200": { "$ref": "#/components/responses/Json" }, "503": { "description": "Under memory pressure" } } } },
+    "/status": { "get": { "tags": ["Health"], "summary": "Runtime, configuration and service status", "operationId": "status", "responses": { "200": { "$ref": "#/components/responses/Json" } } } },
+    "/auth-status": { "get": { "tags": ["Debug"], "summary": "Show how a request would authenticate", "operationId": "authStatus", "responses": { "200": { "$ref": "#/components/responses/Json" } } } },
+    "/up": { "get": { "tags": ["Health"], "summary": "Memory pressure status", "operationId": "up", "responses": { "200": { "$ref": "#/components/responses/Json" } } } },
+    "/version": { "get": { "tags": ["Base"], "summary": "Running version", "operationId": "version", "responses": { "200": { "$ref": "#/components/responses/Json" } } } },
+    "/version/check": {
+      "get": {
+        "tags": ["Base"],
+        "summary": "Check GitHub for a newer release",
+        "operationId": "versionCheck",
+        "responses": { "200": { "description": "Update information", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateInfo" } } } } }
+      }
+    },
+    "/openapi.json": { "get": { "tags": ["Base"], "summary": "This OpenAPI document", "operationId": "openapi", "responses": { "200": { "$ref": "#/components/responses/Json" } } } },
+    "/docs": { "get": { "tags": ["Base"], "summary": "Interactive API reference", "operationId": "docs", "responses": { "200": { "description": "HTML page", "content": { "text/html": {} } } } } },
+    "/proxy/services": {
+      "get": {
+        "tags": ["Proxy"],
+        "summary": "List proxyable services",
+        "operationId": "proxyListServices",
+        "security": [{ "apiKeyHeader": [] }, { "bearerAuth": [] }, { "apiKeyQuery": [] }],
+        "responses": { "200": { "description": "Services", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ServiceList" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" } }
+      }
+    },
+    "/proxy/services/{service}/rate-limit": {
+      "get": {
+        "tags": ["Proxy"],
+        "summary": "Window rate-limit status for a custom service",
+        "operationId": "proxyRateLimit",
+        "security": [{ "apiKeyHeader": [] }, { "bearerAuth": [] }, { "apiKeyQuery": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/service" }],
+        "responses": {
+          "200": { "description": "Status", "content": { "application/json": { "schema": { "type": "object", "properties": { "service": { "type": "string" }, "remaining": { "type": "integer" }, "resetTime": { "type": "integer", "description": "Unix ms, 0 when idle" }, "resetIn": { "type": "integer", "description": "Seconds" } } } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    },
+    "/proxy/auth-debug": { "get": { "tags": ["Debug"], "summary": "Confirm proxy authentication works", "operationId": "proxyAuthDebug", "security": [{ "apiKeyHeader": [] }, { "bearerAuth": [] }, { "apiKeyQuery": [] }], "responses": { "200": { "$ref": "#/components/responses/Json" }, "401": { "$ref": "#/components/responses/Unauthorized" } } } },
+    "/proxy/auth-test": { "get": { "tags": ["Debug"], "summary": "Minimal proxy authentication test", "operationId": "proxyAuthTest", "security": [{ "apiKeyHeader": [] }, { "bearerAuth": [] }, { "apiKeyQuery": [] }], "responses": { "200": { "$ref": "#/components/responses/Json" }, "401": { "$ref": "#/components/responses/Unauthorized" } } } },
+    "/proxy/key-debug": { "get": { "tags": ["Debug"], "summary": "Which keys are configured (no key material)", "operationId": "proxyKeyDebug", "security": [{ "apiKeyHeader": [] }, { "bearerAuth": [] }, { "apiKeyQuery": [] }], "responses": { "200": { "description": "Key status", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyDebug" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" } } } },
+    "/proxy/{service}": {
+      "summary": "Proxy to a service root",
+      "parameters": [{ "$ref": "#/components/parameters/service" }, { "$ref": "#/components/parameters/upstreamAuthorization" }],
+      "get": { "tags": ["Proxy"], "operationId": "proxyRootGet", "security": [{ "apiKeyHeader": [] }, { "bearerAuth": [] }, { "apiKeyQuery": [] }], "responses": { "default": { "description": "Upstream response, passed through" } } }
+    },
+    "/proxy/{service}/{path}": {
+      "summary": "Proxy any request to a service",
+      "description": "Forwards the method, path, query, headers and body to the service's base URL and streams the response back. For `discord`, a leading `/api` is stripped and `/vN` selects the API version (`/proxy/discord/v10/users/@me`). `api_key` is never forwarded. Discord 429s are retried up to 3 times (waits over 30s are returned to the caller); GitHub secondary limits likewise. Responses carry `X-Proxy-Service` and `X-Proxy-Duration`.",
+      "parameters": [
+        { "$ref": "#/components/parameters/service" },
+        { "name": "path", "in": "path", "required": true, "description": "Remaining path, may contain slashes", "schema": { "type": "string" }, "example": "v10/users/@me" },
+        { "$ref": "#/components/parameters/upstreamAuthorization" }
+      ],
+      "get": { "tags": ["Proxy"], "operationId": "proxyGet", "security": [{ "apiKeyHeader": [] }, { "bearerAuth": [] }, { "apiKeyQuery": [] }], "responses": { "default": { "description": "Upstream response" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" }, "429": { "description": "Custom service window limit exceeded" }, "502": { "description": "Upstream unreachable" }, "504": { "description": "Upstream timed out" } } },
+      "post": { "tags": ["Proxy"], "operationId": "proxyPost", "security": [{ "apiKeyHeader": [] }, { "bearerAuth": [] }, { "apiKeyQuery": [] }], "requestBody": { "description": "Forwarded byte for byte (JSON, multipart, anything)", "content": { "*/*": {} } }, "responses": { "default": { "description": "Upstream response" }, "413": { "description": "Body larger than MAX_BODY_MB" } } },
+      "put": { "tags": ["Proxy"], "operationId": "proxyPut", "security": [{ "apiKeyHeader": [] }, { "bearerAuth": [] }, { "apiKeyQuery": [] }], "requestBody": { "content": { "*/*": {} } }, "responses": { "default": { "description": "Upstream response" } } },
+      "patch": { "tags": ["Proxy"], "operationId": "proxyPatch", "security": [{ "apiKeyHeader": [] }, { "bearerAuth": [] }, { "apiKeyQuery": [] }], "requestBody": { "content": { "*/*": {} } }, "responses": { "default": { "description": "Upstream response" } } },
+      "delete": { "tags": ["Proxy"], "operationId": "proxyDelete", "security": [{ "apiKeyHeader": [] }, { "bearerAuth": [] }, { "apiKeyQuery": [] }], "responses": { "default": { "description": "Upstream response" } } },
+      "head": { "tags": ["Proxy"], "operationId": "proxyHead", "security": [{ "apiKeyHeader": [] }, { "bearerAuth": [] }, { "apiKeyQuery": [] }], "responses": { "default": { "description": "Upstream response headers" } } }
+    },
+    "/manage/services": {
+      "get": {
+        "tags": ["Management"],
+        "summary": "List all services",
+        "operationId": "manageListServices",
+        "security": [{ "apiKeyHeader": [] }, { "bearerAuth": [] }, { "apiKeyQuery": [] }],
+        "responses": { "200": { "description": "Services", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ServiceList" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" } }
+      },
+      "post": {
+        "tags": ["Management"],
+        "summary": "Register a service",
+        "description": "Adds a service and saves it to SERVICES_FILE so it survives restarts.",
+        "operationId": "manageAddService",
+        "security": [{ "apiKeyHeader": [] }, { "bearerAuth": [] }, { "apiKeyQuery": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "type": "object", "properties": { "key": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$" }, "config": { "$ref": "#/components/schemas/ServiceConfig" } }, "required": ["key", "config"] },
+              "example": { "key": "status", "config": { "name": "Status API", "baseUrl": "https://status.example.com/api/", "rateLimit": { "maxRequests": 60, "windowMs": 60000 } } }
+            }
+          }
+        },
+        "responses": {
+          "200": { "$ref": "#/components/responses/Json" },
+          "400": { "description": "Invalid configuration", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "409": { "description": "Key already exists", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/manage/services/{key}": {
+      "parameters": [{ "$ref": "#/components/parameters/key" }],
+      "get": { "tags": ["Management"], "summary": "Get a service", "operationId": "manageGetService", "security": [{ "apiKeyHeader": [] }, { "bearerAuth": [] }, { "apiKeyQuery": [] }], "responses": { "200": { "$ref": "#/components/responses/Json" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" } } },
+      "delete": { "tags": ["Management"], "summary": "Remove a dynamic service", "operationId": "manageRemoveService", "security": [{ "apiKeyHeader": [] }, { "bearerAuth": [] }, { "apiKeyQuery": [] }], "responses": { "200": { "$ref": "#/components/responses/Json" }, "400": { "description": "Built-in services can't be removed" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" } } }
+    },
+    "/manage/services/{key}/test": {
+      "parameters": [{ "$ref": "#/components/parameters/key" }],
+      "post": { "tags": ["Management"], "summary": "Check a service's base URL is reachable", "operationId": "manageTestService", "security": [{ "apiKeyHeader": [] }, { "bearerAuth": [] }, { "apiKeyQuery": [] }], "responses": { "200": { "$ref": "#/components/responses/Json" }, "401": { "$ref": "#/components/responses/Unauthorized" }, "404": { "$ref": "#/components/responses/NotFound" } } }
+    },
+    "/manage/diagnostics": { "get": { "tags": ["Management"], "summary": "System and configuration diagnostics", "operationId": "manageDiagnostics", "security": [{ "apiKeyHeader": [] }, { "bearerAuth": [] }, { "apiKeyQuery": [] }], "responses": { "200": { "$ref": "#/components/responses/Json" }, "401": { "$ref": "#/components/responses/Unauthorized" } } } },
+    "/manage/key-debug": { "get": { "tags": ["Debug"], "summary": "Which keys are configured (no key material)", "operationId": "manageKeyDebug", "security": [{ "apiKeyHeader": [] }, { "bearerAuth": [] }, { "apiKeyQuery": [] }], "responses": { "200": { "description": "Key status", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/KeyDebug" } } } }, "401": { "$ref": "#/components/responses/Unauthorized" } } } }
+  }
+}

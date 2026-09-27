@@ -1,0 +1,13 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "provider": "golang",
+  "packages": {
+    "go": "1.25"
+  },
+  "deploy": {
+    "variables": {
+      "APP_ENV": "production",
+      "SERVICES_FILE": "/data/services.json"
+    }
+  }
+}
