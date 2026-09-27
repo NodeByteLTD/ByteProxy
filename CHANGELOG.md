@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
-## [2.0.0] - Unreleased
+## [2.0.0] - 09/27/2026
 
 A rewrite of ByteProxy in Go. The HTTP routes are kept compatible with 1.x, but credential handling has changed. See the migration notes in the README.
 
